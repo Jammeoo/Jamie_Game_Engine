@@ -1,0 +1,88 @@
+#include "Engine/Math/CubicBezierCurve2D.hpp"
+#include "Engine/Math/CubicHermiteCurve2D.hpp"
+#include "Engine/Math/MathUtils.hpp"
+CubicBezierCurve2D::CubicBezierCurve2D(Vec2 startPos, Vec2 guidePos1, Vec2 guidePos2, Vec2 endPos)
+	:m_startPos(startPos),
+	m_guidePos1(guidePos1),
+	m_guidePos2(guidePos2),
+	m_endPos(endPos)
+{
+
+}
+
+CubicBezierCurve2D::CubicBezierCurve2D(CubicHermiteCurve2D const& fromHermite)
+	:m_startPos(fromHermite.m_startPos),
+	m_guidePos1((fromHermite.m_velStart/3.f)+ fromHermite.m_startPos),
+	m_endPos(fromHermite.m_endPos),
+	m_guidePos2(-(fromHermite.m_velEnd/3.f)+ fromHermite.m_endPos)
+{
+
+}
+
+Vec2 CubicBezierCurve2D::EvaluateAtParametric(float parametricZeroToOne) const
+{
+	float x = ComputeCubicBezier1D(m_startPos.x, m_guidePos1.x, m_guidePos2.x, m_endPos.x, parametricZeroToOne);
+	float y = ComputeCubicBezier1D(m_startPos.y, m_guidePos1.y, m_guidePos2.y, m_endPos.y, parametricZeroToOne);
+
+	return Vec2(x, y);
+}
+
+float CubicBezierCurve2D::GetApproximateLength(int numSubdivisions /*= 64*/) const
+{
+	float length = 0.f;
+	float deltaT = 1.f / (float)numSubdivisions;
+	
+	for (int subdivIndex = 0; subdivIndex < numSubdivisions; subdivIndex++) 
+	{
+		float currentT = subdivIndex * deltaT;
+		Vec2 currentPosi = EvaluateAtParametric(currentT);
+		Vec2 nextPosi = EvaluateAtParametric(currentT + deltaT);
+		float currentSubdivLength = GetDistance2D(currentPosi, nextPosi);
+		length += currentSubdivLength;
+	}
+	return length;
+}
+
+Vec2 CubicBezierCurve2D::EvaluateAtApproximateDistance(float distanceAlongCurve, int numSubdivisions /*= 64*/) const
+{
+	float fullLength = GetApproximateLength(numSubdivisions);
+	if (distanceAlongCurve >= fullLength) 
+	{
+		return m_endPos;
+	}
+	
+	//float deltaSeg = fullLength / (float)numSubdivisions;
+	float deltaT = 1.f / (float)numSubdivisions;
+
+	float currentLengthSum = 0;
+	float timeSum = 0;
+	Vec2 resultLastCheckPoint = Vec2(0.f, 0.f);
+	Vec2 resultNextCheckPoint = Vec2(0.f, 0.f);
+	float distanceBtwCheckPoint = 0.f;
+
+	for (int segmentIndex = 0; segmentIndex < numSubdivisions; segmentIndex++) //?
+	{
+		resultLastCheckPoint = EvaluateAtParametric(timeSum);
+		resultNextCheckPoint = EvaluateAtParametric(timeSum + deltaT);
+		distanceBtwCheckPoint = GetDistance2D(resultLastCheckPoint, resultNextCheckPoint);
+		//compare
+		if (currentLengthSum + distanceBtwCheckPoint > distanceAlongCurve)
+		{
+			break;
+		}
+		//add time
+		currentLengthSum += distanceBtwCheckPoint;
+		timeSum +=  deltaT;
+		
+	}
+
+	float distanceFraction = distanceAlongCurve - currentLengthSum;
+	float ratio = distanceFraction / distanceBtwCheckPoint;
+	float resultX = Interpolate(resultLastCheckPoint.x, resultNextCheckPoint.x, ratio);
+	float resultY = Interpolate(resultLastCheckPoint.y, resultNextCheckPoint.y, ratio);
+
+
+// 	float resultX = RangeMap(distanceFraction, 0.f, distanceBtwCheckPoint, resultLastCheckPoint.x, resultNextCheckPoint.x);
+// 	float resultY = RangeMap(distanceFraction, 0.f, distanceBtwCheckPoint, resultLastCheckPoint.y, resultNextCheckPoint.y);
+	return Vec2(resultX, resultY);
+}
